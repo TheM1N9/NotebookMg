@@ -1,4 +1,5 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+import uvicorn
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -8,6 +9,7 @@ from pathlib import Path
 from main import NotebookMg
 from dotenv import load_dotenv
 import logging
+from pydub import AudioSegment
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -15,16 +17,27 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(docs_url=None, redoc_url=None)  # Disable Swagger UI  # Disable ReDoc
+
+# Mount static directory - make sure this comes before other routes
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Set up templates
 templates = Jinja2Templates(directory="templates")
 
-# Create uploads directory if it doesn't exist
+# Create necessary directories
 UPLOAD_DIR = Path("uploads")
 OUTPUT_DIR = Path("outputs")
+STATIC_DIR = Path("static")
+
+# Create directories if they don't exist
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
+STATIC_DIR.mkdir(exist_ok=True)
+
+# Make sure styles.css exists in static directory
+if not (STATIC_DIR / "styles.css").exists():
+    logger.warning("styles.css not found in static directory")
 
 # Initialize the NotebookGemini instance
 try:
@@ -39,9 +52,10 @@ except Exception as e:
     raise
 
 
-# @app.get("/", response_class=HTMLResponse)
-# async def read_root(request):
-#     return templates.TemplateResponse("index.html", {"request": request})
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    """Serve the index page"""
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.post("/upload-pdf/")
@@ -59,6 +73,18 @@ async def upload_pdf(
             raise HTTPException(status_code=400, detail="File must be a PDF")
 
         logger.info(f"Processing file: {file.filename}")
+
+        # Clean up old files before processing new upload
+        try:
+            # Clean up old segments and podcast files
+            for old_file in OUTPUT_DIR.glob("*"):
+                try:
+                    os.remove(old_file)
+                    logger.info(f"Cleaned up old file: {old_file}")
+                except Exception as e:
+                    logger.error(f"Failed to remove old file {old_file}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
 
         # Save the uploaded PDF
         pdf_path = UPLOAD_DIR / file.filename
@@ -95,12 +121,40 @@ async def upload_pdf(
             logger.info("Dramatizing transcript...")
             speaker_lines = gemini_bot.dramatize_transcript(transcript, text)
 
-            logger.info("Generating audio...")
+            # Save individual audio segments
+            segment_files = []
+            for i, (speaker, line) in enumerate(speaker_lines):
+                segment_path = OUTPUT_DIR / f"{base_name}_segment_{i}.mp3"
+                voice_id = (
+                    gemini_bot.Akshara_voice_id
+                    if speaker == "Akshara"
+                    else gemini_bot.Tharun_voice_id
+                )
+
+                # Generate individual segment audio
+                audio_data = gemini_bot.eleven_client.text_to_speech.convert(
+                    voice_id=voice_id,
+                    output_format="mp3_44100_128",
+                    text=line,
+                    model_id="eleven_multilingual_v2",
+                )
+
+                # Save segment
+                audio_bytes = b"".join(audio_data)
+                with open(segment_path, "wb") as f:
+                    f.write(audio_bytes)
+
+                segment_files.append(
+                    {"file": segment_path.name, "speaker": speaker, "text": line}
+                )
+
+            # Generate final combined audio as before
             gemini_bot.generate_audio(speaker_lines, str(podcast_path))
 
             return {
                 "message": "Podcast generated successfully",
                 "podcast_file": podcast_path.name,
+                "segments": segment_files,
             }
 
         except Exception as e:
@@ -137,3 +191,96 @@ async def download_file(filename: str):
 async def get_status():
     """Check API status"""
     return {"status": "running"}
+
+
+@app.post("/regenerate-segment/{index}")
+async def regenerate_segment(
+    index: int,
+    speaker: str = Form(...),
+    text: str = Form(...),
+    tharun_voice_id: str = Form(...),
+    akshara_voice_id: str = Form(...),
+):
+    try:
+        # Select the appropriate voice ID based on speaker
+        voice_id = akshara_voice_id if speaker == "Akshara" else tharun_voice_id
+
+        # Generate new audio using ElevenLabs
+        audio_data = gemini_bot.eleven_client.text_to_speech.convert(
+            voice_id=voice_id,
+            output_format="mp3_44100_128",
+            text=text,
+            model_id="eleven_multilingual_v2",
+        )
+
+        # Get the base name from existing segments
+        base_name = next(OUTPUT_DIR.glob("*_segment_0.mp3")).stem.rsplit(
+            "_segment_0", 1
+        )[0]
+        segment_path = OUTPUT_DIR / f"{base_name}_segment_{index}.mp3"
+
+        # Delete the existing segment file if it exists
+        if segment_path.exists():
+            try:
+                os.remove(segment_path)
+                logger.info(f"Deleted existing segment file: {segment_path}")
+            except Exception as e:
+                logger.error(f"Error deleting existing segment file: {str(e)}")
+                # Continue anyway as we'll overwrite the file
+
+        # Save the regenerated segment
+        audio_bytes = b"".join(audio_data)
+        with open(segment_path, "wb") as f:
+            f.write(audio_bytes)
+        logger.info(f"Saved new segment file: {segment_path}")
+
+        # Delete existing podcast file if it exists
+        podcast_path = OUTPUT_DIR / f"{base_name}_podcast.mp3"
+        if podcast_path.exists():
+            try:
+                os.remove(podcast_path)
+                logger.info(f"Deleted existing podcast file: {podcast_path}")
+            except Exception as e:
+                logger.error(f"Error deleting existing podcast file: {str(e)}")
+
+        # Combine all segments into a new complete podcast
+        combined_audio = AudioSegment.empty()
+
+        # Get all segment files and sort them correctly
+        segment_files = sorted(
+            [f for f in OUTPUT_DIR.glob(f"{base_name}_segment_*.mp3")],
+            key=lambda x: int(x.stem.split("_")[-1]),
+        )
+
+        logger.info(f"Found {len(segment_files)} segments to combine")
+
+        # Add each segment to the combined audio
+        for segment_file in segment_files:
+            try:
+                logger.info(f"Processing segment: {segment_file}")
+                audio_segment = AudioSegment.from_file(segment_file, format="mp3")
+                pause = AudioSegment.silent(duration=300)  # 300ms pause
+                combined_audio += audio_segment + pause
+            except Exception as e:
+                logger.error(f"Error processing segment {segment_file}: {str(e)}")
+                raise
+
+        # Save the new complete podcast
+        combined_audio.export(str(podcast_path), format="mp3")
+        logger.info(
+            f"Successfully generated new podcast with {len(segment_files)} segments"
+        )
+
+        return {
+            "success": True,
+            "segment_file": segment_path.name,
+            "podcast_file": podcast_path.name,
+        }
+
+    except Exception as e:
+        logger.error(f"Regeneration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Regeneration error: {str(e)}")
+
+
+# if __name__ == "__main__":
+#     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

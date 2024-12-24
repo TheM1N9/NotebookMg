@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Tuple, List
 import json
 import re
-from elevenlabs import ElevenLabs
+from elevenlabs import ElevenLabs, VoiceSettings
 from pydub import AudioSegment
 import io
 from dotenv import load_dotenv
@@ -62,9 +62,9 @@ class NotebookMg:
 
         PLEASE DO NOT REMOVE ANYTHING FROM THE TEXT, JUST CLEAN IT UP.
 
-        THE TEXT IS NOT A TRANSCRIPT, IT IS A PDF, SO YOU MUST CLEAN IT UP AND RE-WRITE WHEN NEEDED. 
+        DO NOT SUMMARIZE OR BRIEF THE TEXT, JUST CLEAN IT UP AND RE-WRITE WHEN NEEDED. 
         
-        THE PODCAST SHOULD BE ATLEAST FIFTEEN MINUTES LONG.
+        THE PODCAST SHOULD BE ATLEAST TEN MINUTES LONG.
 
         ALSO REASON ABOUT THE CHANGES YOU MADE TO THE TEXT. Output should be in JSON format
 
@@ -111,7 +111,9 @@ class NotebookMg:
 
         Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the second speaker.
 
-        It should be a real podcast with every fine nuance documented in as much detail as possible. Welcome the listeners with a super fun overview and keep it really catchy and almost borderline click bait
+        It should be a real podcast with every fine nuance documented in as much detail as possible.
+
+        The podcast should be atleast 10 minutes long.
 
         ALWAYS START YOUR RESPONSE DIRECTLY WITH Akshara: 
         DO NOT GIVE EPISODE TITLES SEPERATELY, LET Akshara TITLE IT IN HER SPEECH
@@ -157,26 +159,31 @@ class NotebookMg:
 
         It should be a real podcast with every fine nuance documented in as much detail as possible. Welcome the listeners with a super fun overview and keep it really catchy and almost borderline click bait, make the podcast as engaging as possible. And podcast title should be simple, catchy and short.
 
-        Please re-write to make it as characteristic as possible, THE PODCASTERS WERE INDIANS, SO SPEAK LIKE THAT, use indian accents and words
+        Please re-write to make it as characteristic as possible, THE PODCASTERS WERE INDIANS.
 
-        THE PODCAST SHOULD BE ATLEAST FIFTEEN MINUTES LONG.
+        THE PODCAST SHOULD BE ATLEAST TEN MINUTES LONG.
 
         START YOUR RESPONSE DIRECTLY WITH Akshara:
 
         STRICTLY RETURN YOUR RESPONSE AS A LIST OF TUPLES OK? 
 
+        DO NOT ADD MARKDOWN FORMATTING, STOP ADDING SPECIAL CHARACTERS THAT MARKDOWN CAPATILISATION ETC LIKES. MARKDOWN FORMATTING IS ONLY ALLOWED FOR ```list and ```
+
         IT WILL START DIRECTLY WITH THE LIST AND END WITH THE LIST NOTHING ELSE
 
+        FOLLOW ALL THE INSTRUCTIONS GIVEN ABOVE, OK?
+
         Example of response:
-        ```python
+        ```list
         {example1}
         ```
 
-        ```python
+        ```list
         {example2}
         ```
 
         The above is an example of the output format, you must strictly follow this format.
+        THE OUTPUT SHOULD BE A LIST OF TUPLES, EACH TUPLE SHOULD HAVE TWO ELEMENTS AND THE TUPLES SHOULD BE SEPERATED BY A COMMA, THE SPEAKER AND THE TEXT AND WRAPPED IN ```list and ```
         Original transcript: {transcript}
         Additional Text or Context: {entire_text}
         """
@@ -192,19 +199,30 @@ class NotebookMg:
 
         # Convert the string response to a list of tuples
         try:
-            script = re.search(r"```python\n(.*?)\n```", response.text, re.DOTALL)
+            script = re.search(r"```list\n(.*?)\n```", response.text, re.DOTALL)
             if script:
                 script = script.group(1)
-                # Clean up the response text and evaluate it as a Python literal
+                # Add debug logging
+                # print("Raw script:", script)
+                # Clean up the response text and evaluate it as a list literal
                 speaker_lines = ast.literal_eval(script)
-                # for speaker, text in speaker_lines:
-                #     print(f"{speaker}: {text}")
+                # Add debug logging
+                # print("Parsed speaker_lines:", speaker_lines)
+                # Validate each tuple has exactly 2 elements
+                for line in speaker_lines:
+                    if len(line) != 2:
+                        print(f"Invalid line format: {line}")
+                        raise ValueError(
+                            f"Expected tuple of 2 elements, got {len(line)} elements: {line}"
+                        )
                 return speaker_lines
             else:
                 print("No script found in the response.")
+                print("Full response:", response.text)
                 return []
         except Exception as e:
             print(f"Error parsing response: {e}")
+            print("Full response:", response.text)
             return []
 
     def generate_audio(self, speaker_lines: List[Tuple[str, str]], output_path: str):
@@ -221,6 +239,16 @@ class NotebookMg:
             previous_text = speaker_lines[i - 1][1] if i > 0 else None
             next_text = speaker_lines[i + 1][1] if i < len(speaker_lines) - 1 else None
 
+            # Update voice settings with required parameters
+            self.eleven_client.voices.edit_settings(
+                voice_id=voice_id,
+                request=VoiceSettings(
+                    stability=0.5,  # Add stability parameter (0-1)
+                    similarity_boost=0.75,  # Add similarity_boost parameter (0-1)
+                    use_speaker_boost=True,
+                ),
+            )
+
             # Generate audio for this line
             audio_data = self.eleven_client.text_to_speech.convert(
                 voice_id=voice_id,
@@ -232,7 +260,7 @@ class NotebookMg:
             )
 
             # Convert audio data to AudioSegment
-            audio_bytes = b"".join(audio_data)  # Convert iterator to bytes
+            audio_bytes = b"".join(audio_data)
             audio_segment = AudioSegment.from_file(
                 io.BytesIO(audio_bytes), format="mp3"
             )
