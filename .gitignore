@@ -1,6 +1,7 @@
 config.json
 .env
 uploads
+outputs
 chroma
 instance
 .venv

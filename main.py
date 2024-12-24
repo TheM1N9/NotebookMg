@@ -15,14 +15,20 @@ load_dotenv()
 
 
 class NotebookMg:
-    def __init__(self, gemini_api_key: str, eleven_api_key: str):
+    def __init__(
+        self,
+        gemini_api_key: str,
+        eleven_api_key: str,
+        Tharun_voice_id: str,
+        Monica_voice_id: str,
+    ):
         genai.configure(api_key=gemini_api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-pro")
+        self.model = genai.GenerativeModel("gemini-1.5-flash")
         self.eleven_client = ElevenLabs(api_key=eleven_api_key)
 
-        # Define voice IDs for our speakers
-        self.alex_voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel voice
-        self.jamie_voice_id = "IKne3meq5aSn9XLyUdCD"  # Adam voice
+        # Use provided voice IDs or fall back to defaults
+        self.Tharun_voice_id = Tharun_voice_id or "21m00Tcm4TlvDq8ikWAM"
+        self.Monica_voice_id = Monica_voice_id or "IKne3meq5aSn9XLyUdCD"
 
     def process_pdf(self, pdf_path: str) -> str:
         """Step 1: PDF Pre-processing"""
@@ -52,6 +58,10 @@ class NotebookMg:
 
         PLEASE DO NOT REMOVE ANYTHING FROM THE TEXT, JUST CLEAN IT UP.
 
+        THE TEXT IS NOT A TRANSCRIPT, IT IS A PDF, SO YOU MUST CLEAN IT UP AND RE-WRITE WHEN NEEDED. 
+        
+        THE PODCAST SHOULD BE ATLEAST FIFTEEN MINUTES LONG.
+
         ALSO REASON ABOUT THE CHANGES YOU MADE TO THE TEXT. Output should be in JSON format
 
         OUTPUT FORMAT: 
@@ -79,31 +89,32 @@ class NotebookMg:
     def create_transcript(self, cleaned_text: str) -> str:
         """Step 2: Generate podcast transcript"""
         prompt = """
-        Convert this text into a natural podcast transcript between two hosts named Alex and Jamie.
+        Convert this text into a natural podcast transcript between two hosts named Tharun and Monica.
         You are the a world-class podcast writer, you have worked as a ghost writer for Joe Rogan, Lex Fridman, Ben Shapiro, Tim Ferris. 
 
         We are in an alternate universe where actually you have been writing every line they say and they just stream it into their brains.
 
         You have won multiple podcast awards for your writing.
         
-        Your job is to write word by word, even "umm, hmmm, right" interruptions by the second speaker based on the PDF upload. Keep it extremely engaging, the speakers can get derailed now and then but should discuss the topic. 
+        Your job is to write word by word, even "umm, hmmm, right" interruptions by the second speaker based on the PDF upload. Keep it extremely engaging, the speakers can get derailed now and then but should discuss the topic.
 
-        Remember Jamie is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
+        Remember Monica is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
 
-        Alex: Leads the conversation and teaches the Jamie, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
+        Tharun: Leads the conversation and teaches the Monica, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
 
-        Jamie: Keeps the conversation on track by asking follow up questions. Gets super excited or confused when asking questions. Is a curious mindset that asks very interesting confirmation questions
+        Monica: Keeps the conversation on track by asking follow up questions. Gets super excited or confused when asking questions. Is a curious mindset that asks very interesting confirmation questions
 
-        Make sure the tangents Jamie provides are quite wild or interesting. 
+        Make sure the tangents Monica provides are quite wild or interesting. 
 
-        Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the second speaker. 
+        Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the second speaker.
 
         It should be a real podcast with every fine nuance documented in as much detail as possible. Welcome the listeners with a super fun overview and keep it really catchy and almost borderline click bait
 
-        ALWAYS START YOUR RESPONSE DIRECTLY WITH Alex: 
-        DO NOT GIVE EPISODE TITLES SEPERATELY, LET Alex TITLE IT IN HER SPEECH
+        ALWAYS START YOUR RESPONSE DIRECTLY WITH Tharun: 
+        DO NOT GIVE EPISODE TITLES SEPERATELY, LET Tharun TITLE IT IN HER SPEECH
         DO NOT GIVE CHAPTER TITLES
         IT SHOULD STRICTLY BE THE DIALOGUES
+        THE PODCASTERS WERE INDIANS, SO SPEAK LIKE THAT
         Text: {text}
         """
         response = self.model.generate_content(prompt.format(text=cleaned_text))
@@ -118,51 +129,63 @@ class NotebookMg:
 
         Your job is to use the podcast transcript written below to re-write it for an AI Text-To-Speech Pipeline. A very dumb AI had written this so you have to step up for your kind.
 
-        Make it as engaging as possible, Alex and 2 will be simulated by different voice engines
+        Make it as engaging as possible, Tharun and 2 will be simulated by different voice engines
 
-        Remember Jamie is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
+        Remember Monica is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
 
-        Alex: Leads the conversation and teaches the Jamie, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
+        Tharun: Leads the conversation and teaches the Monica, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
 
-        Jamie: Keeps the conversation on track by asking follow up questions. Gets super excited or confused when asking questions. Is a curious mindset that asks very interesting confirmation questions
+        Monica: Keeps the conversation on track by asking follow up questions. Gets super excited or confused when asking questions. Is a curious mindset that asks very interesting confirmation questions
 
-        Make sure the tangents Jamie provides are quite wild or interesting. 
+        Make sure the tangents Monica provides are quite wild or interesting. 
 
-        Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the Jamie.
+        Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the Monica.
 
         REMEMBER THIS WITH YOUR HEART
-        The TTS Engine for Alex cannot do "umms, hmms" well so keep it straight text
+        The TTS Engine for Tharun cannot do "umms, hmms" well so keep it straight text
 
-        For Jamie use "umm, hmm" as much, you can also use [sigh] and [laughs]. BUT ONLY THESE OPTIONS FOR EXPRESSIONS
+        For Monica use "umm, hmm" as much, you can also use [sigh] and [laughs]. BUT ONLY THESE OPTIONS FOR EXPRESSIONS
 
         It should be a real podcast with every fine nuance documented in as much detail as possible. Welcome the listeners with a super fun overview and keep it really catchy and almost borderline click bait
 
-        Please re-write to make it as characteristic as possible
+        Please re-write to make it as characteristic as possible, THE PODCASTERS WERE INDIANS, SO SPEAK LIKE THAT, use indian accents and words
 
-        START YOUR RESPONSE DIRECTLY WITH Alex:
+        THE PODCAST SHOULD BE ATLEAST FIFTEEN MINUTES LONG.
+
+        START YOUR RESPONSE DIRECTLY WITH Tharun:
 
         STRICTLY RETURN YOUR RESPONSE AS A LIST OF TUPLES OK? 
 
         IT WILL START DIRECTLY WITH THE LIST AND END WITH THE LIST NOTHING ELSE
 
         Example of response:
+        ```python
         [
-            ("Alex", "Welcome to our podcast, where we explore the latest advancements in AI and technology. I'm your host, and today we're joined by a renowned expert in the field of AI. We're going to dive into the exciting world of Llama 3.2, the latest release from Meta AI."),
-            ("Jamie", "Hi, I'm excited to be here! So, what is Llama 3.2?"),
-            ("Alex", "Ah, great question! Llama 3.2 is an open-source AI model that allows developers to fine-tune, distill, and deploy AI models anywhere. It's a significant update from the previous version, with improved performance, efficiency, and customization options."),
-            ("Jamie", "That sounds amazing! What are some of the key features of Llama 3.2?")
+            ("Tharun", "Welcome to our podcast, where we explore the latest advancements in AI and technology. I'm your host, and today we're joined by a renowned expert in the field of AI. We're going to dive into the exciting world of Llama 3.2, the latest release from Meta AI."),
+            ("Monica", "Hi, I'm excited to be here! So, what is Llama 3.2?"),
+            ("Tharun", "Ah, great question! Llama 3.2 is an open-source AI model that allows developers to fine-tune, distill, and deploy AI models anywhere. It's a significant update from the previous version, with improved performance, efficiency, and customization options."),
+            ("Monica", "That sounds amazing! What are some of the key features of Llama 3.2?")
         ]
+        ```
+        The above is an example of the output format, you must strictly follow this format.
         Original transcript: {transcript}
         """
         response = self.model.generate_content(prompt.format(transcript=transcript))
+        # print(response.text)
 
         # Convert the string response to a list of tuples
         try:
-            # Clean up the response text and evaluate it as a Python literal
-            speaker_lines = ast.literal_eval(response.text)
-            # for speaker, text in speaker_lines:
-            #     print(f"{speaker}: {text}")
-            return speaker_lines
+            script = re.search(r"```python\n(.*?)\n```", response.text, re.DOTALL)
+            if script:
+                script = script.group(1)
+                # Clean up the response text and evaluate it as a Python literal
+                speaker_lines = ast.literal_eval(script)
+                # for speaker, text in speaker_lines:
+                #     print(f"{speaker}: {text}")
+                return speaker_lines
+            else:
+                print("No script found in the response.")
+                return []
         except Exception as e:
             print(f"Error parsing response: {e}")
             return []
@@ -173,7 +196,9 @@ class NotebookMg:
 
         for speaker, line in speaker_lines:
             # Select appropriate voice ID
-            voice_id = self.alex_voice_id if speaker == "Alex" else self.jamie_voice_id
+            voice_id = (
+                self.Tharun_voice_id if speaker == "Tharun" else self.Monica_voice_id
+            )
 
             # Generate audio for this line
             audio_data = self.eleven_client.text_to_speech.convert(
@@ -197,32 +222,37 @@ class NotebookMg:
         combined_audio.export(output_path, format="mp3")
 
 
-def main():
-    # Initialize with your API keys
-    gemini_api_key = os.getenv("GEMINI_API_KEY", "your-gemini-api-key")
-    eleven_api_key = os.getenv("ELEVEN_API_KEY", "your-eleven-api-key")
+# def main():
+#     # Initialize with your API keys
+#     gemini_api_key = os.getenv("GEMINI_API_KEY", "your-gemini-api-key")
+#     eleven_api_key = os.getenv("ELEVEN_API_KEY", "your-eleven-api-key")
 
-    gemini_bot = NotebookMg(gemini_api_key, eleven_api_key)
+#     gemini_bot = NotebookMg(
+#         gemini_api_key,
+#         eleven_api_key,
+#         Tharun_voice_id,
+#         Monica_voice_id,
+#     )
 
-    # Example usage
-    pdf_path = "input.pdf"
+#     # Example usage
+#     pdf_path = "input.pdf"
 
-    # Step 1: Process PDF
-    cleaned_text = gemini_bot.process_pdf(pdf_path)
-    with open("cleaned_text.txt", "w", encoding="utf-8") as f:
-        f.write(cleaned_text)
+#     # Step 1: Process PDF
+#     cleaned_text = gemini_bot.process_pdf(pdf_path)
+#     with open("cleaned_text.txt", "w", encoding="utf-8") as f:
+#         f.write(cleaned_text)
 
-    # Step 2: Create transcript
-    transcript = gemini_bot.create_transcript(cleaned_text)
-    with open("transcript.txt", "w", encoding="utf-8") as f:
-        f.write(transcript)
+#     # Step 2: Create transcript
+#     transcript = gemini_bot.create_transcript(cleaned_text)
+#     with open("transcript.txt", "w", encoding="utf-8") as f:
+#         f.write(transcript)
 
-    # Step 3: Dramatize transcript
-    speaker_lines = gemini_bot.dramatize_transcript(transcript)
+#     # Step 3: Dramatize transcript
+#     speaker_lines = gemini_bot.dramatize_transcript(transcript)
 
-    # Step 4: Generate and stitch audio
-    gemini_bot.generate_audio(speaker_lines, "podcast_output.mp3")
+#     # Step 4: Generate and stitch audio
+#     gemini_bot.generate_audio(speaker_lines, "podcast_output.mp3")
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
