@@ -32,7 +32,7 @@ try:
         gemini_api_key=os.getenv("GEMINI_API_KEY", "dude, wth enter your key"),
         eleven_api_key=os.getenv("ELEVEN_API_KEY", "dude, wth enter your key"),
         Tharun_voice_id="21m00Tcm4TlvDq8ikWAM",
-        Monica_voice_id="IKne3meq5aSn9XLyUdCD",
+        Akshara_voice_id="IKne3meq5aSn9XLyUdCD",
     )
 except Exception as e:
     logger.error(f"Failed to initialize NotebookMg: {str(e)}")
@@ -48,7 +48,7 @@ except Exception as e:
 async def upload_pdf(
     file: UploadFile = File(...),
     tharun_voice_id: str = Form(...),
-    monica_voice_id: str = Form(...),
+    akshara_voice_id: str = Form(...),
 ):
     """Upload PDF and generate podcast"""
     pdf_path = None  # Initialize pdf_path before try block
@@ -72,7 +72,7 @@ async def upload_pdf(
         try:
             # Update the gemini_bot instance with user-provided voice IDs
             gemini_bot.Tharun_voice_id = tharun_voice_id
-            gemini_bot.Monica_voice_id = monica_voice_id
+            gemini_bot.Akshara_voice_id = akshara_voice_id
 
             # Generate unique output filenames
             base_name = pdf_path.stem
@@ -82,17 +82,18 @@ async def upload_pdf(
 
             # Process the PDF
             logger.info("Processing PDF...")
-            cleaned_text = gemini_bot.process_pdf(str(pdf_path))
+            text = gemini_bot.get_pdf_text(str(pdf_path))
+            cleaned_text = gemini_bot.process_pdf(text)
             with open(cleaned_text_path, "w", encoding="utf-8") as f:
                 f.write(cleaned_text)
 
             logger.info("Creating transcript...")
-            transcript = gemini_bot.create_transcript(cleaned_text)
+            transcript = gemini_bot.create_transcript(cleaned_text, text)
             with open(transcript_path, "w", encoding="utf-8") as f:
                 f.write(transcript)
 
             logger.info("Dramatizing transcript...")
-            speaker_lines = gemini_bot.dramatize_transcript(transcript)
+            speaker_lines = gemini_bot.dramatize_transcript(transcript, text)
 
             logger.info("Generating audio...")
             gemini_bot.generate_audio(speaker_lines, str(podcast_path))

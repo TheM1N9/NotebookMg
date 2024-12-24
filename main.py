@@ -10,6 +10,7 @@ from pydub import AudioSegment
 import io
 from dotenv import load_dotenv
 import ast
+from examples import example1, example2
 
 load_dotenv()
 
@@ -19,24 +20,27 @@ class NotebookMg:
         self,
         gemini_api_key: str,
         eleven_api_key: str,
+        Akshara_voice_id: str,
         Tharun_voice_id: str,
-        Monica_voice_id: str,
     ):
         genai.configure(api_key=gemini_api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.model = genai.GenerativeModel("gemini-1.5-pro")
         self.eleven_client = ElevenLabs(api_key=eleven_api_key)
 
         # Use provided voice IDs or fall back to defaults
-        self.Tharun_voice_id = Tharun_voice_id or "21m00Tcm4TlvDq8ikWAM"
-        self.Monica_voice_id = Monica_voice_id or "IKne3meq5aSn9XLyUdCD"
+        self.Akshara_voice_id = Akshara_voice_id or "21m00Tcm4TlvDq8ikWAM"
+        self.Tharun_voice_id = Tharun_voice_id or "IKne3meq5aSn9XLyUdCD"
 
-    def process_pdf(self, pdf_path: str) -> str:
-        """Step 1: PDF Pre-processing"""
+    def get_pdf_text(self, pdf_path: str) -> str:
         text = ""
         with open(pdf_path, "rb") as file:
             pdf_reader = PyPDF2.PdfReader(file)
             for page in pdf_reader.pages:
                 text += page.extract_text()
+        return text
+
+    def process_pdf(self, text: str) -> str:
+        """Step 1: PDF Pre-processing"""
 
         # Clean up the text using Gemini
         prompt = """
@@ -74,6 +78,7 @@ class NotebookMg:
         Here is the text: {text}
         """
         response = self.model.generate_content(prompt.format(text=text))
+        print(response.text)
         # First try to find JSON within code blocks
         match = re.search(r"```(?:json)?\n(.*?)\n```", response.text, re.DOTALL)
         if match:
@@ -86,41 +91,50 @@ class NotebookMg:
         print(f"Reasoning: {reasoning}")
         return pre_processed_text
 
-    def create_transcript(self, cleaned_text: str) -> str:
+    def create_transcript(self, cleaned_text: str, entire_text: str) -> str:
         """Step 2: Generate podcast transcript"""
         prompt = """
-        Convert this text into a natural podcast transcript between two hosts named Tharun and Monica.
+        Convert this text into a natural podcast transcript between two hosts named Akshara and Tharun.
         You are the a world-class podcast writer, you have worked as a ghost writer for Joe Rogan, Lex Fridman, Ben Shapiro, Tim Ferris. 
 
         We are in an alternate universe where actually you have been writing every line they say and they just stream it into their brains.
 
         You have won multiple podcast awards for your writing.
         
-        Your job is to write word by word, even "umm, hmmm, right" interruptions by the second speaker based on the PDF upload. Keep it extremely engaging, the speakers can get derailed now and then but should discuss the topic.
+        Your job is to write word by word, even "umm, hmmm, right" interruptions based on the PDF upload. Keep it extremely engaging, the speakers can get derailed now and then but should discuss the topic.
 
-        Remember Monica is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
+        Remember Tharun is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
 
-        Tharun: Leads the conversation and teaches the Monica, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
+        Akshara: Leads the conversation and teaches the Tharun, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
 
-        Monica: Keeps the conversation on track by asking follow up questions. Gets super excited or confused when asking questions. Is a curious mindset that asks very interesting confirmation questions
-
-        Make sure the tangents Monica provides are quite wild or interesting. 
+        Tharun: Keeps the conversation on track by asking follow up questions. Is a curious mindset that asks very interesting confirmation questions
 
         Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the second speaker.
 
         It should be a real podcast with every fine nuance documented in as much detail as possible. Welcome the listeners with a super fun overview and keep it really catchy and almost borderline click bait
 
-        ALWAYS START YOUR RESPONSE DIRECTLY WITH Tharun: 
-        DO NOT GIVE EPISODE TITLES SEPERATELY, LET Tharun TITLE IT IN HER SPEECH
+        ALWAYS START YOUR RESPONSE DIRECTLY WITH Akshara: 
+        DO NOT GIVE EPISODE TITLES SEPERATELY, LET Akshara TITLE IT IN HER SPEECH
         DO NOT GIVE CHAPTER TITLES
         IT SHOULD STRICTLY BE THE DIALOGUES
         THE PODCASTERS WERE INDIANS, SO SPEAK LIKE THAT
         Text: {text}
+        Additional Text or Context: {entire_text}
+        Example of response: {example1}, {example2}
         """
-        response = self.model.generate_content(prompt.format(text=cleaned_text))
+        response = self.model.generate_content(
+            prompt.format(
+                text=cleaned_text,
+                entire_text=entire_text,
+                example1=example1,
+                example2=example2,
+            )
+        )
         return response.text
 
-    def dramatize_transcript(self, transcript: str) -> List[Tuple[str, str]]:
+    def dramatize_transcript(
+        self, transcript: str, entire_text: str
+    ) -> List[Tuple[str, str]]:
         """Step 3: Add dramatic elements and structure the conversation"""
         prompt = """
         You are an international oscar winnning screenwriter
@@ -129,30 +143,25 @@ class NotebookMg:
 
         Your job is to use the podcast transcript written below to re-write it for an AI Text-To-Speech Pipeline. A very dumb AI had written this so you have to step up for your kind.
 
-        Make it as engaging as possible, Tharun and 2 will be simulated by different voice engines
+        Make it as engaging as possible, Akshara and Tharun will be simulated by different voice engines
 
-        Remember Monica is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
+        Remember Tharun is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
 
-        Tharun: Leads the conversation and teaches the Monica, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
+        Akshara: Leads the conversation and teaches the Tharun, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
 
-        Monica: Keeps the conversation on track by asking follow up questions. Gets super excited or confused when asking questions. Is a curious mindset that asks very interesting confirmation questions
+        Tharun: Keeps the conversation on track by asking follow up questions. Is a curious mindset that asks very interesting confirmation questions
 
-        Make sure the tangents Monica provides are quite wild or interesting. 
+        Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the podcast, only use these options for expressions.
 
-        Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the Monica.
+        Add breaks in the conversation to make it more natural and engaging. To add breaks use the word "..." in the transcript.
 
-        REMEMBER THIS WITH YOUR HEART
-        The TTS Engine for Tharun cannot do "umms, hmms" well so keep it straight text
-
-        For Monica use "umm, hmm" as much, you can also use [sigh] and [laughs]. BUT ONLY THESE OPTIONS FOR EXPRESSIONS
-
-        It should be a real podcast with every fine nuance documented in as much detail as possible. Welcome the listeners with a super fun overview and keep it really catchy and almost borderline click bait
+        It should be a real podcast with every fine nuance documented in as much detail as possible. Welcome the listeners with a super fun overview and keep it really catchy and almost borderline click bait, make the podcast as engaging as possible. And podcast title should be simple, catchy and short.
 
         Please re-write to make it as characteristic as possible, THE PODCASTERS WERE INDIANS, SO SPEAK LIKE THAT, use indian accents and words
 
         THE PODCAST SHOULD BE ATLEAST FIFTEEN MINUTES LONG.
 
-        START YOUR RESPONSE DIRECTLY WITH Tharun:
+        START YOUR RESPONSE DIRECTLY WITH Akshara:
 
         STRICTLY RETURN YOUR RESPONSE AS A LIST OF TUPLES OK? 
 
@@ -160,17 +169,25 @@ class NotebookMg:
 
         Example of response:
         ```python
-        [
-            ("Tharun", "Welcome to our podcast, where we explore the latest advancements in AI and technology. I'm your host, and today we're joined by a renowned expert in the field of AI. We're going to dive into the exciting world of Llama 3.2, the latest release from Meta AI."),
-            ("Monica", "Hi, I'm excited to be here! So, what is Llama 3.2?"),
-            ("Tharun", "Ah, great question! Llama 3.2 is an open-source AI model that allows developers to fine-tune, distill, and deploy AI models anywhere. It's a significant update from the previous version, with improved performance, efficiency, and customization options."),
-            ("Monica", "That sounds amazing! What are some of the key features of Llama 3.2?")
-        ]
+        {example1}
         ```
+
+        ```python
+        {example2}
+        ```
+
         The above is an example of the output format, you must strictly follow this format.
         Original transcript: {transcript}
+        Additional Text or Context: {entire_text}
         """
-        response = self.model.generate_content(prompt.format(transcript=transcript))
+        response = self.model.generate_content(
+            prompt.format(
+                transcript=transcript,
+                entire_text=entire_text,
+                example1=example1,
+                example2=example2,
+            )
+        )
         # print(response.text)
 
         # Convert the string response to a list of tuples
@@ -194,11 +211,15 @@ class NotebookMg:
         """Step 4: Generate and stitch audio using ElevenLabs"""
         combined_audio = AudioSegment.empty()
 
-        for speaker, line in speaker_lines:
+        for i, (speaker, line) in enumerate(speaker_lines):
             # Select appropriate voice ID
             voice_id = (
-                self.Tharun_voice_id if speaker == "Tharun" else self.Monica_voice_id
+                self.Akshara_voice_id if speaker == "Akshara" else self.Tharun_voice_id
             )
+
+            # Get previous and next text for context
+            previous_text = speaker_lines[i - 1][1] if i > 0 else None
+            next_text = speaker_lines[i + 1][1] if i < len(speaker_lines) - 1 else None
 
             # Generate audio for this line
             audio_data = self.eleven_client.text_to_speech.convert(
@@ -206,6 +227,8 @@ class NotebookMg:
                 output_format="mp3_44100_128",
                 text=line,
                 model_id="eleven_multilingual_v2",
+                previous_text=previous_text,
+                next_text=next_text,
             )
 
             # Convert audio data to AudioSegment
@@ -215,7 +238,7 @@ class NotebookMg:
             )
 
             # Add small pause between segments
-            pause = AudioSegment.silent(duration=500)  # 500ms pause
+            pause = AudioSegment.silent(duration=300)  # 300ms pause
             combined_audio += audio_segment + pause
 
         # Export final audio
@@ -230,8 +253,8 @@ class NotebookMg:
 #     gemini_bot = NotebookMg(
 #         gemini_api_key,
 #         eleven_api_key,
+#         Akshara_voice_id,
 #         Tharun_voice_id,
-#         Monica_voice_id,
 #     )
 
 #     # Example usage
