@@ -1,0 +1,11 @@
+fastapi
+python-multipart
+uvicorn
+python-dotenv
+google-generativeai
+PyPDF2
+elevenlabs
+pydub
+jinja2
+python-jose[cryptography]
+ffmpeg-python 

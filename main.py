@@ -2,7 +2,7 @@ import google.generativeai as genai
 import PyPDF2
 import os
 from pathlib import Path
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 import json
 import re
 from elevenlabs import ElevenLabs, VoiceSettings
@@ -11,6 +11,7 @@ import io
 from dotenv import load_dotenv
 import ast
 from examples import example1, example2
+from google.generativeai.types.file_types import File as GeminiFile
 
 load_dotenv()
 
@@ -31,166 +32,244 @@ class NotebookMg:
         self.Akshara_voice_id = Akshara_voice_id or "21m00Tcm4TlvDq8ikWAM"
         self.Tharun_voice_id = Tharun_voice_id or "IKne3meq5aSn9XLyUdCD"
 
-    def get_pdf_text(self, pdf_path: str) -> str:
-        text = ""
-        with open(pdf_path, "rb") as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            for page in pdf_reader.pages:
-                text += page.extract_text()
-        return text
+    def upload_to_gemini(
+        self, path: Path, mime_type: Optional[str] = None
+    ) -> GeminiFile:
+        """Uploads file to Gemini."""
+        try:
+            file = genai.upload_file(path, mime_type=mime_type)
+            print(f"Uploaded file '{file.display_name}' to Gemini")
+            return file
+        except Exception as e:
+            print(f"Error uploading file to Gemini: {str(e)}")
+            raise
 
-    def process_pdf(self, text: str) -> str:
-        """Step 1: PDF Pre-processing"""
+    # def get_pdf_text(self, pdf_path: str) -> str:
+    #     text = ""
+    #     with open(pdf_path, "rb") as file:
+    #         pdf_reader = PyPDF2.PdfReader(file)
+    #         for page in pdf_reader.pages:
+    #             text += page.extract_text()
+    #     return text
 
-        # Clean up the text using Gemini
-        prompt = """
-        You are a world class text pre-processor, here is the raw data from a PDF, please parse and return it in a way that is crispy and usable to send to a podcast writer.
+    # def process_pdf(self, text: str) -> str:
+    #     """Step 1: PDF Pre-processing"""
 
-        The raw data is messed up with new lines, Latex math and you will see fluff that we can remove completely. Basically take away any details that you think might be useless in a podcast author's transcript.
+    #     # Clean up the text using Gemini
+    #     prompt = """
+    #     You are a world class text pre-processor, here is the raw data from a PDF, please parse and return it in a way that is crispy and usable to send to a podcast writer.
 
-        Remember, the podcast could be on any topic whatsoever so the issues listed above are not exhaustive
+    #     The raw data is messed up with new lines, Latex math and you will see fluff that we can remove completely. Basically take away any details that you think might be useless in a podcast author's transcript.
 
-        Please be smart with what you remove and be creative ok?
+    #     Remember, the podcast could be on any topic whatsoever so the issues listed above are not exhaustive
 
-        Remember DO NOT START SUMMARIZING THIS, YOU ARE ONLY CLEANING UP THE TEXT AND RE-WRITING WHEN NEEDED
+    #     Please be smart with what you remove and be creative ok?
 
-        Be very smart and aggressive with removing details, you will get a running portion of the text and keep returning the processed text.
+    #     Remember DO NOT START SUMMARIZING THIS, YOU ARE ONLY CLEANING UP THE TEXT AND RE-WRITING WHEN NEEDED
 
-        PLEASE DO NOT ADD MARKDOWN FORMATTING, STOP ADDING SPECIAL CHARACTERS THAT MARKDOWN CAPATILISATION ETC LIKES
+    #     Be very smart and aggressive with removing details, you will get a running portion of the text and keep returning the processed text.
 
-        ALWAYS start your response directly with processed text and NO ACKNOWLEDGEMENTS about my questions ok?
+    #     PLEASE DO NOT ADD MARKDOWN FORMATTING, STOP ADDING SPECIAL CHARACTERS THAT MARKDOWN CAPATILISATION ETC LIKES
 
-        PLEASE DO NOT REMOVE ANYTHING FROM THE TEXT, JUST CLEAN IT UP.
+    #     ALWAYS start your response directly with processed text and NO ACKNOWLEDGEMENTS about my questions ok?
 
-        DO NOT SUMMARIZE OR BRIEF THE TEXT, JUST CLEAN IT UP AND RE-WRITE WHEN NEEDED. 
-        
-        THE PODCAST SHOULD BE ATLEAST TEN MINUTES LONG.
+    #     PLEASE DO NOT REMOVE ANYTHING FROM THE TEXT, JUST CLEAN IT UP.
 
-        ALSO REASON ABOUT THE CHANGES YOU MADE TO THE TEXT. Output should be in JSON format
+    #     DO NOT SUMMARIZE OR BRIEF THE TEXT, JUST CLEAN IT UP AND RE-WRITE WHEN NEEDED.
 
-        OUTPUT FORMAT: 
-        ```json
-        
-            "text": "processed text",
-            "reasoning": "reasoning for the changes you made"
-        
-        ```
-        Here is the text: {text}
-        """
-        response = self.model.generate_content(prompt.format(text=text))
-        print(response.text)
-        # First try to find JSON within code blocks
-        match = re.search(r"```(?:json)?\n(.*?)\n```", response.text, re.DOTALL)
-        if match:
-            json_str = match.group(1)
-        else:
-            # If no code blocks found, try to parse the entire response
-            json_str = response.text
-        pre_processed_text = json.loads(json_str)["text"]
-        reasoning = json.loads(json_str)["reasoning"]
-        print(f"Reasoning: {reasoning}")
-        return pre_processed_text
+    #     THE PODCAST SHOULD BE ATLEAST TEN MINUTES LONG.
 
-    def create_transcript(self, cleaned_text: str, entire_text: str) -> str:
+    #     ALSO REASON ABOUT THE CHANGES YOU MADE TO THE TEXT. Output should be in JSON format
+
+    #     OUTPUT FORMAT:
+    #     ```json
+
+    #         "text": "processed text",
+    #         "reasoning": "reasoning for the changes you made"
+
+    #     ```
+    #     Here is the text: {text}
+    #     """
+    #     response = self.model.generate_content(prompt.format(text=text))
+    #     print(response.text)
+    #     # First try to find JSON within code blocks
+    #     match = re.search(r"```(?:json)?\n(.*?)\n```", response.text, re.DOTALL)
+    #     if match:
+    #         json_str = match.group(1)
+    #     else:
+    #         # If no code blocks found, try to parse the entire response
+    #         json_str = response.text
+    #     pre_processed_text = json.loads(json_str)["text"]
+    #     reasoning = json.loads(json_str)["reasoning"]
+    #     print(f"Reasoning: {reasoning}")
+    #     return pre_processed_text
+
+    def create_transcript(self, pdf_file: GeminiFile) -> str:
         """Step 2: Generate podcast transcript"""
         prompt = """
-        Convert this text into a natural podcast transcript between two hosts named Akshara and Tharun.
-        You are the a world-class podcast writer, you have worked as a ghost writer for Joe Rogan, Lex Fridman, Ben Shapiro, Tim Ferris. 
+                ROLE: You are a legendary podcast ghostwriter who has secretly crafted the most iconic episodes for Joe Rogan, Lex Fridman, Ben Shapiro, and Tim Ferriss. Your writing has shaped modern podcast culture, earning multiple awards for natural dialogue and engaging narratives.
 
-        We are in an alternate universe where actually you have been writing every line they say and they just stream it into their brains.
+                TASK: Transform PDF content into an authentic podcast conversation between two hosts:
 
-        You have won multiple podcast awards for your writing.
-        
-        Your job is to write word by word, even "umm, hmmm, right" interruptions based on the PDF upload. Keep it extremely engaging, the speakers can get derailed now and then but should discuss the topic.
+                1. Akshara (Lead Host):
+                - Expert voice with deep subject knowledge
+                - Masterfully explains complex topics through:
+                * Vivid personal anecdotes
+                * Relatable real-world analogies
+                * Unexpected connections
+                - Teaching style combines authority with approachability
+                - Occasionally goes on fascinating tangents before returning to core points
+                - Speaks with natural Indian English inflections
 
-        Remember Tharun is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
+                2. Tharun (Co-host/Learner):
+                - Represents the audience perspective
+                - Interrupts with thoughtful clarifications
+                - Uses natural reaction sounds:
+                * "hmm" (processing new information)
+                * "ahh" (realization moments)
+                * "right" (understanding)
+                * "interesting" (engagement)
+                - Asks follow-up questions that deepen understanding
+                - Brings discussions back to main topic when needed
+                - Natural Indian English delivery
 
-        Akshara: Leads the conversation and teaches the Tharun, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
+                CONVERSATION REQUIREMENTS:
+                - Minimum 3 to 4 minute dialogue length, max 5 minutes
+                - Title announced naturally within Akshara's opening
+                - Do not start the podcast abruptly, start with a natural conversation, then gradually build up to the title, check the examples for reference
+                - Organic flow with:
+                * Natural interruptions
+                * Brief tangents
+                * Thinking pauses ("...")
+                * Reaction sounds
+                * Clarification requests
+                - Keep individual speaking turns concise
+                - Include both hosts' personalities in every exchange
+                - Maintain Indian English authenticity
+                - Weave in relevant cultural references
 
-        Tharun: Keeps the conversation on track by asking follow up questions. Is a curious mindset that asks very interesting confirmation questions
+                FORMAT:
+                - Start directly with "Akshara:" 
+                - Present as continuous dialogue
+                - No separate titles or chapters
+                - No formatting except speaker names
+                - Natural conversation markers only
 
-        Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the second speaker.
+                OUTPUT:
+                Akshara: [dialogue]
+                Tharun: [dialogue]
+                [Continue alternating naturally]
 
-        It should be a real podcast with every fine nuance documented in as much detail as possible.
+                Here are some examples of how you should format the dialogue:
+                ```list
+                {example1} 
+                ```
 
-        The podcast should be atleast 10 minutes long.
+                ```list
+                {example2}
+                ```
 
-        ALWAYS START YOUR RESPONSE DIRECTLY WITH Akshara: 
-        DO NOT GIVE EPISODE TITLES SEPERATELY, LET Akshara TITLE IT IN HER SPEECH
-        DO NOT GIVE CHAPTER TITLES
-        IT SHOULD STRICTLY BE THE DIALOGUES
-        THE PODCASTERS WERE INDIANS, SO SPEAK LIKE THAT
-        Text: {text}
-        Additional Text or Context: {entire_text}
-        Example of response: {example1}, {example2}
-        """
+                Input: 
+                """
         response = self.model.generate_content(
-            prompt.format(
-                text=cleaned_text,
-                entire_text=entire_text,
-                example1=example1,
-                example2=example2,
-            )
+            [
+                prompt.format(
+                    example1=example1,
+                    example2=example2,
+                ),
+                pdf_file,
+            ]
         )
         return response.text
 
-    def dramatize_transcript(
-        self, transcript: str, entire_text: str
-    ) -> List[Tuple[str, str]]:
+    def dramatize_transcript(self, transcript: str) -> List[Tuple[str, str]]:
         """Step 3: Add dramatic elements and structure the conversation"""
         prompt = """
-        You are an international oscar winnning screenwriter
+                    You are an Academy Award-winning screenwriter specializing in natural dialogue and compelling narratives. Your expertise spans across film, television, and podcasting, where you've collaborated with top-tier creators worldwide.
 
-        You have been working with multiple award winning podcasters.
+                    ROLE AND OBJECTIVE:
+                    - Transform the provided transcript into an engaging podcast dialogue optimized for AI Text-to-Speech systems
+                    - Create authentic Indian English conversations while maintaining professional delivery
+                    - Ensure the content is educational yet conversational
 
-        Your job is to use the podcast transcript written below to re-write it for an AI Text-To-Speech Pipeline. A very dumb AI had written this so you have to step up for your kind.
+                    CHARACTERS:
 
-        Make it as engaging as possible, Akshara and Tharun will be simulated by different voice engines
+                    1. Akshara (Host/Expert):
+                    - Warm, articulate educator with expertise in the subject
+                    - Uses relatable analogies and real-world examples
+                    - Naturally weaves in personal experiences and case studies
+                    - Speaking style: Confident, engaging, with subtle Indian English inflections
+                    - Uses brief pauses for emphasis and clarity
 
-        Remember Tharun is new to the topic and the conversation should always have realistic anecdotes and analogies sprinkled throughout. The questions should have real world example follow ups etc
+                    2. Tharun (Co-host/Learner):
+                    - Represents the audience's perspective
+                    - Asks insightful follow-up questions
+                    - Helps break down complex concepts
+                    - Speaking style: Curious, enthusiastic, with natural Indian English delivery
+                    - Uses thinking sounds to show processing of information
 
-        Akshara: Leads the conversation and teaches the Tharun, gives incredible anecdotes and analogies when explaining. Is a captivating teacher that gives great anecdotes
+                    DIALOGUE FORMATTING:
+                        - Use natural conversation markers:
+                            * Pauses: "..."
+                            * Thinking sounds: "hmm", "umm"
+                            * Reactions: "ah", "right", "okay", "interesting"
+                            * For emotion: </happy>, </sad>, </excited>, </angry>, </surprised>, </disgusted>, </anxious>, </neutral>, etc.
+                            * Interruptions: [marked with appropriate timing]
+                        - Keep individual speaking turns concise (2-4 sentences maximum)
+                        - Include comfortable silences between exchanges
+                        - Maintain authenticity with Indian English phrasing and expressions
 
-        Tharun: Keeps the conversation on track by asking follow up questions. Is a curious mindset that asks very interesting confirmation questions
+                    STRUCTURAL REQUIREMENTS:
+                        - Minimum length: 3 to 5 minutes of dialogue. Max 5 minutes
+                        - Opening: Catchy, borderline clickbait introduction
+                        - Title: Short, memorable, curiosity-driving
+                        - Natural topic progression with clear learning outcomes
+                        - Regular engagement points for listener retention
 
-        Ensure there are interruptions during explanations or there are "hmm" and "umm" injected throughout from the podcast, only use these options for expressions.
+                    OUTPUT FORMAT:
 
-        Add breaks in the conversation to make it more natural and engaging. To add breaks use the word "..." in the transcript.
+                        ```list
+                        [("Speaker", "Dialogue")]
+                        ```
+                    - Each dialogue entry must be a tuple
+                    - Strict list format without additional formatting
+                    - No markdown except for the list wrapper
+                    - Direct start with Akshara's opening line
 
-        It should be a real podcast with every fine nuance documented in as much detail as possible. Welcome the listeners with a super fun overview and keep it really catchy and almost borderline click bait, make the podcast as engaging as possible. And podcast title should be simple, catchy and short.
+                    QUALITY GUIDELINES:
+                    - Authenticity:
+                    - Natural speech patterns
+                    - Realistic hesitations
+                    - Conversational flow
 
-        Please re-write to make it as characteristic as possible, THE PODCASTERS WERE INDIANS.
+                    Engagement:
+                    - Regular curiosity hooks
+                    - Relatable examples
+                    - Clear explanations
 
-        THE PODCAST SHOULD BE ATLEAST TEN MINUTES LONG.
 
-        START YOUR RESPONSE DIRECTLY WITH Akshara:
+                    Cultural Context:
 
-        STRICTLY RETURN YOUR RESPONSE AS A LIST OF TUPLES OK? 
+                    - Indian English expressions
+                    - Culturally relevant examples
+                    - Local references when appropriate
 
-        DO NOT ADD MARKDOWN FORMATTING, STOP ADDING SPECIAL CHARACTERS THAT MARKDOWN CAPATILISATION ETC LIKES. MARKDOWN FORMATTING IS ONLY ALLOWED FOR ```list and ```
+                    Here are some examples of how you should format the dialogue:
+                    
+                    ```list
+                    {example1} 
+                    ```
 
-        IT WILL START DIRECTLY WITH THE LIST AND END WITH THE LIST NOTHING ELSE
+                    ```list
+                    {example2}
+                    ```
 
-        FOLLOW ALL THE INSTRUCTIONS GIVEN ABOVE, OK?
+                    Input: {transcript}
 
-        Example of response:
-        ```list
-        {example1}
-        ```
-
-        ```list
-        {example2}
-        ```
-
-        The above is an example of the output format, you must strictly follow this format.
-        THE OUTPUT SHOULD BE A LIST OF TUPLES, EACH TUPLE SHOULD HAVE TWO ELEMENTS AND THE TUPLES SHOULD BE SEPERATED BY A COMMA, THE SPEAKER AND THE TEXT AND WRAPPED IN ```list and ```
-        Original transcript: {transcript}
-        Additional Text or Context: {entire_text}
         """
         response = self.model.generate_content(
             prompt.format(
                 transcript=transcript,
-                entire_text=entire_text,
                 example1=example1,
                 example2=example2,
             )
@@ -254,7 +333,7 @@ class NotebookMg:
                 voice_id=voice_id,
                 output_format="mp3_44100_128",
                 text=line,
-                model_id="eleven_multilingual_v2",
+                model_id="eleven_turbo_v2_5",
                 previous_text=previous_text,
                 next_text=next_text,
             )
@@ -281,28 +360,31 @@ class NotebookMg:
 #     gemini_bot = NotebookMg(
 #         gemini_api_key,
 #         eleven_api_key,
-#         Akshara_voice_id,
-#         Tharun_voice_id,
+#         Akshara_voice_id="21m00Tcm4TlvDq8ikWAM",
+#         Tharun_voice_id="IKne3meq5aSn9XLyUdCD",
 #     )
 
 #     # Example usage
 #     pdf_path = "input.pdf"
 
 #     # Step 1: Process PDF
-#     cleaned_text = gemini_bot.process_pdf(pdf_path)
-#     with open("cleaned_text.txt", "w", encoding="utf-8") as f:
-#         f.write(cleaned_text)
+#     # cleaned_text = gemini_bot.process_pdf(pdf_path)
+#     # with open("cleaned_text.txt", "w", encoding="utf-8") as f:
+#     #     f.write(cleaned_text)
+#     pdf_file = gemini_bot.upload_to_gemini(Path(pdf_path))
 
 #     # Step 2: Create transcript
-#     transcript = gemini_bot.create_transcript(cleaned_text)
+#     transcript = gemini_bot.create_transcript(pdf_file)
 #     with open("transcript.txt", "w", encoding="utf-8") as f:
 #         f.write(transcript)
 
 #     # Step 3: Dramatize transcript
 #     speaker_lines = gemini_bot.dramatize_transcript(transcript)
+#     with open("final_transcript.txt", "w", encoding="utf-8") as f:
+#         f.write(str(speaker_lines))
 
 #     # Step 4: Generate and stitch audio
-#     gemini_bot.generate_audio(speaker_lines, "podcast_output.mp3")
+#     # gemini_bot.generate_audio(speaker_lines, "podcast_output.mp3")
 
 
 # if __name__ == "__main__":

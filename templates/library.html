@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>NotebookMg - Library</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="hero">
+      <h1>Your Library</h1>
+      <p>Access your previous podcast generations</p>
+    </div>
+
+    <div class="container">
+      <div class="card">
+        <div class="library-header">
+          <a href="/" class="back-btn">
+            <i class="fas fa-arrow-left"></i> Back to Generator
+          </a>
+          <div class="library-controls">
+            <div class="search-box">
+              <i class="fas fa-search"></i>
+              <input
+                type="text"
+                id="searchInput"
+                placeholder="Search generations..."
+              />
+            </div>
+            <select id="sortSelect" class="sort-select">
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="name">Name A-Z</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="library-grid">
+          {% for item in items %}
+          <div class="library-item" data-folder-id="{{ item.folder_id }}">
+            <div class="item-header">
+              <h3>{{ item.title }}</h3>
+              <div class="tooltip">{{ item.title }}</div>
+              <div class="item-menu">
+                <button
+                  class="menu-btn"
+                  onclick="toggleMenu('{{ item.folder_id }}')"
+                >
+                  <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <div class="menu-dropdown" id="menu-{{ item.folder_id }}">
+                  <a
+                    href="#"
+                    onclick="renameGeneration('{{ item.folder_id }}', '{{ item.title }}'); return false;"
+                  >
+                    <!-- <i class="fas fa-edit"></i>  -->
+                    Rename
+                  </a>
+                  <a
+                    href="#"
+                    onclick="deleteGeneration('{{ item.folder_id }}'); return false;"
+                  >
+                    <!-- <i class="fas fa-trash"></i>  -->
+                    Delete
+                  </a>
+                  <a
+                    href="#"
+                    onclick="shareGeneration('{{ item.folder_id }}'); return false;"
+                  >
+                    <!-- <i class="fas fa-share"></i>  -->
+                    Share
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div class="timestamp">
+              <i class="far fa-clock"></i>
+              {{ item.timestamp }}
+            </div>
+
+            {% for file in item.files %} {% if file.type == "audio" %}
+            <div class="item-preview">
+              <audio controls class="preview-player">
+                <source src="{{ file.download_url }}" type="audio/mpeg" />
+                Your browser does not support the audio element.
+              </audio>
+            </div>
+            {% endif %} {% endfor %}
+
+            <div class="item-actions">
+              <a
+                href="/view-pdf/{{ item.folder_id }}"
+                class="view-btn action-btn"
+                target="_blank"
+              >
+                <i class="fas fa-eye"></i> View PDF
+              </a>
+              {% for file in item.files %} {% if file.type == 'audio' %}
+              <a
+                href="/download/{{ file.id }}"
+                class="download-btn action-btn"
+                onclick="handleDownload(event, this)"
+              >
+                <i class="fas fa-download"></i>
+                <div class="loading-spinner"></div>
+                <span class="btn-text">Download</span>
+                <span class="downloading-text">Downloading</span>
+              </a>
+              {% endif %} {% endfor %}
+            </div>
+          </div>
+          {% endfor %} {% if not items %}
+          <div class="empty-state">
+            <i class="fas fa-folder-open"></i>
+            <h3>No generations yet</h3>
+            <p>Start by creating your first podcast!</p>
+            <a href="/" class="create-btn">Create New</a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <script>
+      async function deleteGeneration(folderId) {
+        if (confirm("Are you sure you want to delete this generation?")) {
+          try {
+            const response = await fetch(`/delete-generation/${folderId}`, {
+              method: "DELETE",
+            });
+
+            if (response.ok) {
+              const item = document.querySelector(
+                `.library-item[data-folder-id="${folderId}"]`
+              );
+              item.remove();
+              alert("Generation deleted successfully");
+            } else {
+              const errorData = await response.json();
+              throw new Error(errorData.detail || "Failed to delete");
+            }
+          } catch (error) {
+            console.error("Delete error:", error);
+            alert("Failed to delete generation. Please try again.");
+          }
+        }
+      }
+
+      async function shareGeneration(folderId) {
+        try {
+          const response = await fetch(`/share-generation/${folderId}`);
+          if (response.ok) {
+            const data = await response.json();
+            const tempInput = document.createElement("input");
+            tempInput.value = data.share_link;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+            alert("Share link copied to clipboard!");
+          } else {
+            throw new Error("Failed to create share link");
+          }
+        } catch (error) {
+          console.error("Share error:", error);
+          alert("Failed to create share link. Please try again.");
+        }
+      }
+
+      function toggleMenu(folderId) {
+        const menu = document.getElementById(`menu-${folderId}`);
+        document.querySelectorAll(".menu-dropdown").forEach((m) => {
+          if (m !== menu) m.classList.remove("active");
+        });
+        menu.classList.toggle("active");
+      }
+
+      // Close dropdowns when clicking outside
+      document.addEventListener("click", function (e) {
+        if (!e.target.closest(".item-menu")) {
+          document.querySelectorAll(".menu-dropdown").forEach((menu) => {
+            menu.classList.remove("active");
+          });
+        }
+      });
+
+      // Search functionality
+      document
+        .getElementById("searchInput")
+        .addEventListener("input", function (e) {
+          const searchTerm = e.target.value.toLowerCase();
+          document.querySelectorAll(".library-item").forEach((item) => {
+            const title = item.querySelector("h3").textContent.toLowerCase();
+            item.style.display = title.includes(searchTerm) ? "block" : "none";
+          });
+        });
+
+      // Sort functionality
+      document
+        .getElementById("sortSelect")
+        .addEventListener("change", function (e) {
+          const items = Array.from(document.querySelectorAll(".library-item"));
+          const grid = document.querySelector(".library-grid");
+
+          items.sort((a, b) => {
+            const titleA = a.querySelector("h3").textContent;
+            const titleB = b.querySelector("h3").textContent;
+            const timeA = a.querySelector(".timestamp").textContent;
+            const timeB = b.querySelector(".timestamp").textContent;
+
+            switch (e.target.value) {
+              case "newest":
+                return timeB.localeCompare(timeA);
+              case "oldest":
+                return timeA.localeCompare(timeB);
+              case "name":
+                return titleA.localeCompare(titleB);
+            }
+          });
+
+          items.forEach((item) => grid.appendChild(item));
+        });
+
+      async function renameGeneration(folderId, currentTitle) {
+        const newTitle = prompt("Enter new title:", currentTitle);
+
+        if (newTitle && newTitle !== currentTitle) {
+          try {
+            const formData = new FormData();
+            formData.append("title", newTitle);
+
+            const response = await fetch(`/rename-generation/${folderId}`, {
+              method: "PUT",
+              body: formData,
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+
+              // Update the title in the UI
+              const libraryItem = document.querySelector(
+                `.library-item[data-folder-id="${folderId}"]`
+              );
+
+              if (libraryItem) {
+                // Update the title
+                const titleElement = libraryItem.querySelector("h3");
+                if (titleElement) {
+                  titleElement.textContent = data.new_title;
+                }
+
+                // Close the dropdown menu
+                const menuDropdown =
+                  libraryItem.querySelector(".menu-dropdown");
+                if (menuDropdown) {
+                  menuDropdown.classList.remove("active");
+                }
+
+                // Optional: Update timestamp if needed
+                const timestampElement =
+                  libraryItem.querySelector(".timestamp");
+                if (timestampElement) {
+                  const timestamp = data.new_name.split("_").pop();
+                  timestampElement.innerHTML = `<i class="far fa-clock"></i> ${timestamp}`;
+                }
+              }
+
+              alert("Title updated successfully!");
+            } else {
+              const errorData = await response.json();
+              throw new Error(errorData.detail || "Failed to update title");
+            }
+          } catch (error) {
+            console.error("Rename error:", error);
+            alert("Failed to rename generation. Please try again.");
+          }
+        }
+      }
+
+      async function handleDownload(event, button) {
+        event.preventDefault();
+
+        // Start loading state
+        button.classList.add("loading");
+
+        try {
+          const response = await fetch(button.href);
+          const blob = await response.blob();
+
+          // Create download link
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "podcast.mp3";
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } catch (error) {
+          console.error("Download failed:", error);
+          alert("Download failed. Please try again.");
+        } finally {
+          // Remove loading state
+          button.classList.remove("loading");
+        }
+      }
+    </script>
+  </body>
+</html>

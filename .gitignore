@@ -7,7 +7,6 @@ instance
 .venv
 *.log
 *.json
-*.txt
 *.mp3
 *.pdf
 mg-env

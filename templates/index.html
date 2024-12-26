@@ -10,8 +10,14 @@
   </head>
   <body>
     <div class="hero">
-      <h1>NotebookMg</h1>
-      <p>Transform your PDFs into engaging podcasts with AI-powered voices</p>
+      <div class="nav-header">
+        <h1>NotebookMg</h1>
+        <a href="/library" class="library-btn">
+          <i class="fas fa-book"></i>
+          Library
+        </a>
+      </div>
+      <!-- <p>Transform your PDFs into engaging podcasts with AI-powered voices</p> -->
     </div>
 
     <div class="container">
@@ -88,12 +94,21 @@
           style="color: #ff4444; margin: 10px 0; display: none"
         ></div>
 
-        <div id="audio-result" class="audio-container">
+        <div id="audio-result" class="audio-container" style="display: none">
           <div class="audio-header">
             <h3>Your Podcast</h3>
             <audio id="podcast-player" controls>
               Your browser does not support the audio element.
             </audio>
+          </div>
+          <div class="save-controls">
+            <button
+              onclick="saveToLibrary()"
+              id="saveButton"
+              style="display: none"
+            >
+              <i class="fas fa-save"></i> Save to Library
+            </button>
           </div>
         </div>
 
@@ -184,52 +199,73 @@
           const data = await response.json();
           console.log("Response data:", data);
 
-          if (audioResult && data.podcast_file) {
-            const audioPlayer = document.getElementById("podcast-player");
-            if (audioPlayer) {
-              audioPlayer.src = `/download/${data.podcast_file}`;
+          if (
+            data.success ||
+            data.message === "Podcast generated successfully"
+          ) {
+            // Show the audio container
+            const audioResult = document.getElementById("audio-result");
+            if (audioResult) {
               audioResult.style.display = "block";
             }
 
+            // Update the main podcast player
+            const podcastPlayer = document.getElementById("podcast-player");
+            if (podcastPlayer && data.podcast_url) {
+              podcastPlayer.src = data.podcast_url;
+              podcastPlayer.load(); // Important: reload the audio element
+            }
+
+            // Show and populate segments
+            const segmentsContainer =
+              document.getElementById("segments-container");
             const segmentsList = document.getElementById("segments-list");
-            if (segmentsList && data.segments) {
+
+            if (segmentsContainer && segmentsList && data.segments) {
+              // Clear existing segments
               segmentsList.innerHTML = "";
 
-              const segmentCount = document.querySelector(".segment-count");
-              if (segmentCount) {
-                segmentCount.textContent = `(${data.segments.length} segments)`;
-              }
-
+              // Add new segments
               data.segments.forEach((segment, index) => {
                 const segmentDiv = document.createElement("div");
                 segmentDiv.className = "segment";
                 segmentDiv.id = `segment-${index}`;
                 segmentDiv.innerHTML = `
-                            <div class="segment-info">
-                                <div class="segment-header">
-                                    <div class="segment-speaker">${segment.speaker}</div>
-                                    <button class="edit-btn" onclick="makeEditable(${index})">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </button>
-                                </div>
-                                <div class="segment-text">
-                                    <div class="segment-text-content">${segment.text}</div>
-                                </div>
-                            </div>
-                            <div class="segment-controls">
-                                <audio controls src="/download/${segment.file}"></audio>
-                                <button class="regenerate-btn" onclick="regenerateSegment(${index})">
-                                    <i class="fas fa-redo"></i> Regenerate
+                        <div class="segment-info">
+                            <div class="segment-header">
+                                <div class="segment-speaker">${segment.speaker}</div>
+                                <button class="edit-btn" onclick="makeEditable(${index})">
+                                    <i class="fas fa-edit"></i> Edit
                                 </button>
                             </div>
-                        `;
+                            <div class="segment-text">
+                                <div class="segment-text-content">${segment.text}</div>
+                            </div>
+                        </div>
+                        <div class="segment-controls">
+                            <audio controls>
+                                <source src="${segment.audio_url}" type="audio/mpeg">
+                                Your browser does not support the audio element.
+                            </audio>
+                            <button class="regenerate-btn" onclick="regenerateSegment(${index})">
+                                <i class="fas fa-redo"></i> Regenerate
+                            </button>
+                        </div>
+                    `;
                 segmentsList.appendChild(segmentDiv);
               });
 
-              if (segmentsContainer) {
-                segmentsContainer.style.display = "block";
+              // Show the segments container and update count
+              segmentsContainer.style.display = "block";
+              const segmentCount =
+                segmentsContainer.querySelector(".segment-count");
+              if (segmentCount) {
+                segmentCount.textContent = `(${data.segments.length} segments)`;
               }
             }
+
+            // Show save button
+            document.getElementById("saveButton").style.display = "block";
           }
         } catch (error) {
           console.error("Error:", error);
@@ -251,86 +287,123 @@
         }
       };
 
-      async function regenerateSegment(index, newText = null) {
-        const segment = document.querySelector(`#segment-${index}`);
-        const speaker = segment.querySelector(".segment-speaker").textContent;
-        const text =
-          newText || segment.querySelector(".segment-text-content").textContent;
-        const audio = segment.querySelector("audio");
-        const button = segment.querySelector(".regenerate-btn");
-        const mainPodcastPlayer = document.getElementById("podcast-player");
-        const currentMainTime = mainPodcastPlayer
-          ? mainPodcastPlayer.currentTime
-          : 0;
-
-        // Disable the button and show loading state
-        button.disabled = true;
-        button.innerHTML =
-          '<i class="fas fa-spinner fa-spin"></i> Regenerating...';
-
+      async function regenerateSegment(index, newText) {
         try {
+          const segment = document.querySelector(`#segment-${index}`);
+          const speaker = segment.getAttribute("data-speaker");
+
+          // Get voice IDs from the form
+          const tharunVoiceId = document.getElementById("tharunVoiceId").value;
+          const aksharaVoiceId =
+            document.getElementById("aksharaVoiceId").value;
+
           const formData = new FormData();
+          formData.append("text", newText);
           formData.append("speaker", speaker);
-          formData.append("text", text);
-          formData.append(
-            "tharun_voice_id",
-            document.getElementById("tharunVoiceId").value
-          );
-          formData.append(
-            "akshara_voice_id",
-            document.getElementById("aksharaVoiceId").value
-          );
+          formData.append("tharun_voice_id", tharunVoiceId);
+          formData.append("akshara_voice_id", aksharaVoiceId);
 
           const response = await fetch(`/regenerate-segment/${index}`, {
             method: "POST",
             body: formData,
           });
 
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
+          if (response.ok) {
+            const data = await response.json();
 
-          const data = await response.json();
-
-          if (data.success) {
-            // Update the segment audio
-            if (audio) {
-              const newSegmentSrc = `/download/${data.segment_file}`;
-              audio.src = newSegmentSrc;
-              await audio.load(); // Wait for the audio to load
+            // Update the audio source with the new download URL
+            const audioElement = document.querySelector(
+              `#segment-${index} audio`
+            );
+            if (audioElement) {
+              audioElement.src = data.download_url;
+              audioElement.load(); // Reload the audio element
             }
 
-            // Update the main podcast player
-            if (mainPodcastPlayer && data.podcast_file) {
-              const newPodcastSrc = `/download/${data.podcast_file}`;
-              mainPodcastPlayer.src = newPodcastSrc;
-              await mainPodcastPlayer.load(); // Wait for the audio to load
-
-              // Try to restore the previous playback position
-              try {
-                mainPodcastPlayer.currentTime = currentMainTime;
-              } catch (e) {
-                console.warn("Couldn't restore playback position:", e);
-              }
-            }
-
-            // Show success state briefly
-            button.innerHTML = '<i class="fas fa-check"></i> Success!';
-            setTimeout(() => {
-              button.innerHTML = '<i class="fas fa-redo"></i> Regenerate';
-              button.disabled = false;
-            }, 2000);
+            return true;
           } else {
-            throw new Error(data.detail || "Regeneration failed");
+            const errorData = await response.json();
+            throw new Error(errorData.detail || "Failed to regenerate segment");
           }
         } catch (error) {
-          console.error("Error:", error);
-          button.innerHTML =
-            '<i class="fas fa-exclamation-triangle"></i> Failed';
-          setTimeout(() => {
-            button.innerHTML = '<i class="fas fa-redo"></i> Regenerate';
-            button.disabled = false;
-          }, 2000);
+          console.error("Regeneration error:", error);
+          throw error;
+        }
+      }
+
+      async function saveEdit(index) {
+        const segment = document.querySelector(`#segment-${index}`);
+        const textarea = segment.querySelector("textarea");
+        const newText = textarea.value;
+        const editButton = segment.querySelector(".edit-btn");
+
+        // Show loading state
+        const saveBtn = segment.querySelector(".save-btn");
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+        try {
+          await regenerateSegment(index, newText);
+
+          // Show the edit button again
+          editButton.style.display = "flex";
+
+          // Update the text display
+          const textDiv = segment.querySelector(".segment-text");
+          textDiv.innerHTML = `<div class="segment-text-content">${newText}</div>`;
+
+          // Regenerate the full podcast
+          await regenerateFullPodcast();
+        } catch (error) {
+          console.error("Error saving edit:", error);
+          alert("Failed to save changes. Please try again.");
+        } finally {
+          // Reset save button
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+        }
+      }
+
+      async function regenerateFullPodcast() {
+        try {
+          // Collect all segments
+          const segments = Array.from(
+            document.querySelectorAll(".segment")
+          ).map((segment) => ({
+            speaker: segment.getAttribute("data-speaker"),
+            text: segment.querySelector(".segment-text-content").textContent,
+          }));
+
+          const response = await fetch("/regenerate-podcast", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ segments }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+
+            // Update the podcast player
+            const podcastPlayer = document.getElementById("podcast-player");
+            if (podcastPlayer) {
+              podcastPlayer.src = data.podcast_url;
+              podcastPlayer.load(); // Important: reload the audio element
+
+              // Show the audio container if hidden
+              document.getElementById("audio-result").style.display = "block";
+              // Show the save button
+              document.getElementById("saveButton").style.display = "block";
+            }
+
+            console.log("Podcast regenerated successfully");
+          } else {
+            throw new Error("Failed to regenerate podcast");
+          }
+        } catch (error) {
+          console.error("Error regenerating podcast:", error);
+          alert("Failed to regenerate podcast. Please try again.");
         }
       }
 
@@ -388,6 +461,10 @@
           ".segment-text-content"
         ).textContent;
         const editButton = segment.querySelector(".edit-btn");
+        const speaker = segment.querySelector(".segment-speaker").textContent; // Get speaker
+
+        // Store speaker in the segment element
+        segment.dataset.speaker = speaker;
 
         // Hide the edit button
         editButton.style.display = "none";
@@ -395,7 +472,7 @@
         // Add textarea and controls
         textDiv.innerHTML = `
             <textarea>${originalText}</textarea>
-            <div class="edit-controls" style="justify-content: flex-end;">
+            <div class="edit-controls">
                 <button class="save-btn" onclick="saveEdit(${index})">
                     <i class="fas fa-save"></i> Save
                 </button>
@@ -423,35 +500,82 @@
         `;
       }
 
-      async function saveEdit(index) {
-        const segment = document.querySelector(`#segment-${index}`);
-        const textarea = segment.querySelector("textarea");
-        const newText = textarea.value;
-        const editButton = segment.querySelector(".edit-btn");
+      async function saveToLibrary() {
+        const title = prompt("Enter a title for this generation:");
+        if (!title) return;
 
-        // Show loading state in save button
-        const saveBtn = segment.querySelector(".save-btn");
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        const formData = new FormData();
+        formData.append("title", title);
+        formData.append(
+          "pdf_file",
+          document.getElementById("pdfFile").files[0]
+        );
+
+        // Get the podcast file
+        const response = await fetch(
+          document.getElementById("podcast-player").src
+        );
+        const blob = await response.blob();
+        formData.append("podcast_file", blob, "podcast.mp3");
+
+        // Get the transcript
+        const transcript = Array.from(
+          document.querySelectorAll(".segment-text-content")
+        )
+          .map((el) => el.textContent)
+          .join("\n");
+        formData.append("transcript", transcript);
 
         try {
-          await regenerateSegment(index, newText);
+          const result = await fetch("/save-to-library", {
+            method: "POST",
+            body: formData,
+          });
 
-          // Show the edit button again
-          editButton.style.display = "flex";
-
-          // Update the text display
-          const textDiv = segment.querySelector(".segment-text");
-          textDiv.innerHTML = `<div class="segment-text-content">${newText}</div>`;
+          if (result.ok) {
+            alert("Successfully saved to library!");
+          } else {
+            throw new Error("Failed to save");
+          }
         } catch (error) {
-          console.error("Error saving edit:", error);
-          alert("Failed to save changes. Please try again.");
-
-          // Reset save button
-          saveBtn.disabled = false;
-          saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+          console.error("Error:", error);
+          alert("Failed to save to library. Please try again.");
         }
       }
+
+      // Show save button when podcast is generated
+      document
+        .getElementById("podcast-player")
+        .addEventListener("loadeddata", function () {
+          document.getElementById("saveButton").style.display = "block";
+        });
+
+      // Update the segment creation to include the speaker information
+      function createSegmentElement(segment, index) {
+        return `
+            <div id="segment-${index}" class="segment" data-speaker="${segment.speaker}">
+                <div class="segment-header">
+                    <span class="speaker-label">${segment.speaker}</span>
+                    <button class="edit-btn" onclick="makeEditable(${index})">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                </div>
+                <div class="segment-text">
+                    <div class="segment-text-content">${segment.text}</div>
+                </div>
+                <audio controls>
+                    <source src="${segment.audio_url}" type="audio/mpeg">
+                    Your browser does not support the audio element.
+                </audio>
+            </div>
+        `;
+      }
+
+      // In your form submission handler
+      const segmentsList = document.getElementById("segments-list");
+      segmentsList.innerHTML = data.segments
+        .map((segment, index) => createSegmentElement(segment, index))
+        .join("");
     </script>
   </body>
 </html>
