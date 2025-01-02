@@ -19,6 +19,7 @@ from drive_manager import DriveManager
 import httpx
 import time
 from datetime import datetime
+import io
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -247,34 +248,51 @@ async def regenerate_segment(
     try:
         # Select the appropriate voice ID based on speaker name
         voice_id = akshara_voice_id if speaker == "Akshara" else tharun_voice_id
-        print(f"Using voice ID {voice_id} for speaker {speaker}")  # Debug log
 
         # Generate new audio using ElevenLabs
         audio_data = gemini_bot.eleven_client.text_to_speech.convert(
             voice_id=voice_id,
             output_format="mp3_44100_128",
-            text=text or "No text provided",  # Fallback if text is undefined
-            model_id="eleven_multilingual_v2",
+            text=text or "No text provided",
+            model_id="eleven_turbo_v2_5",
         )
 
-        # Get the base name from existing segments
+        # Find the existing segment file
         base_name = next(OUTPUT_DIR.glob("*_segment_0.mp3")).stem.rsplit(
             "_segment_0", 1
         )[0]
         segment_path = OUTPUT_DIR / f"{base_name}_segment_{segment_index}.mp3"
 
-        # Save the regenerated segment
+        # Replace the content of the existing file
         audio_bytes = b"".join(audio_data)
         with open(segment_path, "wb") as f:
             f.write(audio_bytes)
 
-        # Upload to Drive and get new file ID
-        file_id = drive_mgr.upload_file(str(segment_path), "outputs")
+        # Update the same file in Drive
+        segment_id = drive_mgr.upload_file(str(segment_path), "outputs")
+
+        # Now combine all segments into a new podcast
+        segments = sorted(OUTPUT_DIR.glob(f"{base_name}_segment_*.mp3"))
+        combined = AudioSegment.empty()
+
+        for segment_file in segments:
+            segment_audio = AudioSegment.from_mp3(segment_file)
+            combined += segment_audio
+            # Add a small pause between segments
+            combined += AudioSegment.silent(duration=300)  # 300ms pause
+
+        # Save the combined podcast
+        podcast_path = OUTPUT_DIR / f"{base_name}_podcast.mp3"
+        combined.export(podcast_path, format="mp3")
+
+        # Upload the new podcast to Drive
+        podcast_id = drive_mgr.upload_file(str(podcast_path), "outputs")
 
         return {
             "success": True,
             "segment_file": segment_path.name,
-            "download_url": f"/download/{file_id}",
+            "download_url": f"/download/{segment_id}",
+            "podcast_url": f"/download/{podcast_id}",  # Add the new podcast URL
         }
 
     except Exception as e:
@@ -432,6 +450,46 @@ async def view_pdf(folder_id: str):
     except Exception as e:
         logger.error(f"Error viewing PDF: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/combine-segments")
+async def combine_segments(request: Request):
+    try:
+        data = await request.json()
+        segment_index = data["segment_index"]
+        new_segment_url = data["new_segment_url"]
+
+        # Get all segment files in order
+        base_name = next(OUTPUT_DIR.glob("*_segment_0.mp3")).stem.rsplit(
+            "_segment_0", 1
+        )[0]
+        segments = sorted(OUTPUT_DIR.glob(f"{base_name}_segment_*.mp3"))
+
+        # Combine audio files using pydub
+        combined = AudioSegment.empty()
+        for i, segment_path in enumerate(segments):
+            # If this is the segment we just regenerated, skip the old file
+            if i == segment_index:
+                # Download the new segment audio
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(new_segment_url)
+                    segment_audio = AudioSegment.from_mp3(io.BytesIO(response.content))
+            else:
+                segment_audio = AudioSegment.from_mp3(segment_path)
+            combined += segment_audio
+
+        # Save combined audio
+        output_path = OUTPUT_DIR / f"{base_name}_combined.mp3"
+        combined.export(output_path, format="mp3")
+
+        # Upload to Drive
+        file_id = drive_mgr.upload_file(str(output_path), "outputs")
+
+        return {"success": True, "podcast_url": f"/download/{file_id}"}
+
+    except Exception as e:
+        logger.error(f"Combination error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Combination error: {str(e)}")
 
 
 # if __name__ == "__main__":

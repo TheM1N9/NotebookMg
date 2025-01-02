@@ -287,19 +287,31 @@
         }
       };
 
-      async function regenerateSegment(index, newText) {
-        try {
-          const segment = document.querySelector(`#segment-${index}`);
-          const speaker = segment.getAttribute("data-speaker");
+      async function regenerateSegment(index) {
+        const button = document.querySelector(
+          `#segment-${index} .regenerate-btn`
+        );
+        const segment = document.querySelector(`#segment-${index}`);
 
-          // Get voice IDs from the form
+        // Add loading state
+        button.disabled = true;
+        button.innerHTML =
+          '<i class="fas fa-spinner fa-spin"></i> Regenerating...';
+
+        try {
+          const speaker = segment.dataset.speaker;
+          const textContent = segment.querySelector(
+            ".segment-text-content"
+          ).textContent;
+
+          // Get voice IDs
           const tharunVoiceId = document.getElementById("tharunVoiceId").value;
           const aksharaVoiceId =
             document.getElementById("aksharaVoiceId").value;
 
           const formData = new FormData();
-          formData.append("text", newText);
           formData.append("speaker", speaker);
+          formData.append("text", textContent);
           formData.append("tharun_voice_id", tharunVoiceId);
           formData.append("akshara_voice_id", aksharaVoiceId);
 
@@ -308,26 +320,49 @@
             body: formData,
           });
 
-          if (response.ok) {
-            const data = await response.json();
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
 
-            // Update the audio source with the new download URL
-            const audioElement = document.querySelector(
-              `#segment-${index} audio`
-            );
-            if (audioElement) {
-              audioElement.src = data.download_url;
-              audioElement.load(); // Reload the audio element
+          const data = await response.json();
+
+          // Update only this segment's audio with cache-busting query parameter
+          const audioElement = segment.querySelector("audio");
+          if (audioElement) {
+            const timestamp = new Date().getTime();
+            audioElement.src = `${data.download_url}?t=${timestamp}`;
+            audioElement.load();
+          }
+
+          // Combine segments to update final podcast
+          const response2 = await fetch("/combine-segments", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              segment_index: index,
+              new_segment_url: data.download_url,
+            }),
+          });
+
+          if (response2.ok) {
+            const combinedData = await response2.json();
+            // Update the main podcast player with cache-busting
+            const podcastPlayer = document.getElementById("podcast-player");
+            if (podcastPlayer) {
+              const timestamp = new Date().getTime();
+              podcastPlayer.src = `${combinedData.podcast_url}?t=${timestamp}`;
+              podcastPlayer.load();
             }
-
-            return true;
-          } else {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || "Failed to regenerate segment");
           }
         } catch (error) {
           console.error("Regeneration error:", error);
-          throw error;
+          alert("Failed to regenerate segment. Please try again.");
+        } finally {
+          // Reset button state
+          button.disabled = false;
+          button.innerHTML = '<i class="fas fa-redo"></i> Regenerate';
         }
       }
 
@@ -343,17 +378,51 @@
         saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
 
         try {
-          await regenerateSegment(index, newText);
+          // Get voice IDs
+          const tharunVoiceId = document.getElementById("tharunVoiceId").value;
+          const aksharaVoiceId =
+            document.getElementById("aksharaVoiceId").value;
+          const speaker = segment.dataset.speaker;
 
-          // Show the edit button again
-          editButton.style.display = "flex";
+          // Create form data
+          const formData = new FormData();
+          formData.append("speaker", speaker);
+          formData.append("text", newText);
+          formData.append("tharun_voice_id", tharunVoiceId);
+          formData.append("akshara_voice_id", aksharaVoiceId);
 
-          // Update the text display
-          const textDiv = segment.querySelector(".segment-text");
-          textDiv.innerHTML = `<div class="segment-text-content">${newText}</div>`;
+          // Call regenerateSegment with the new text
+          const response = await fetch(`/regenerate-segment/${index}`, {
+            method: "POST",
+            body: formData,
+          });
 
-          // Regenerate the full podcast
-          await regenerateFullPodcast();
+          const data = await response.json();
+
+          if (data.success) {
+            // Update the segment audio
+            const audioElement = segment.querySelector("audio");
+            if (audioElement) {
+              const timestamp = new Date().getTime();
+              audioElement.src = `${data.download_url}?t=${timestamp}`;
+              audioElement.load();
+            }
+
+            // Update the main podcast player
+            const podcastPlayer = document.getElementById("podcast-player");
+            if (podcastPlayer && data.podcast_url) {
+              const timestamp = new Date().getTime();
+              podcastPlayer.src = `${data.podcast_url}?t=${timestamp}`;
+              podcastPlayer.load();
+            }
+
+            // Show the edit button again
+            editButton.style.display = "flex";
+
+            // Update the text display
+            const textDiv = segment.querySelector(".segment-text");
+            textDiv.innerHTML = `<div class="segment-text-content">${newText}</div>`;
+          }
         } catch (error) {
           console.error("Error saving edit:", error);
           alert("Failed to save changes. Please try again.");

@@ -25,7 +25,7 @@ class NotebookMg:
         Tharun_voice_id: str,
     ):
         genai.configure(api_key=gemini_api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-pro")
+        self.model = genai.GenerativeModel("gemini-2.0-flash-thinking-exp-1219")
         self.eleven_client = ElevenLabs(api_key=eleven_api_key)
 
         # Use provided voice IDs or fall back to defaults
@@ -119,7 +119,6 @@ class NotebookMg:
                 * Unexpected connections
                 - Teaching style combines authority with approachability
                 - Occasionally goes on fascinating tangents before returning to core points
-                - Speaks with natural Indian English inflections
 
                 2. Tharun (Co-host/Learner):
                 - Represents the audience perspective
@@ -131,10 +130,10 @@ class NotebookMg:
                 * "interesting" (engagement)
                 - Asks follow-up questions that deepen understanding
                 - Brings discussions back to main topic when needed
-                - Natural Indian English delivery
 
                 CONVERSATION REQUIREMENTS:
-                - Minimum 3 to 4 minute dialogue length, max 5 minutes
+                - Minimum 2 to 3 minute dialogue length. Maximum 5 minutes
+                - The transcript should atleast have 200 words, maximum 250 words
                 - Title announced naturally within Akshara's opening
                 - Do not start the podcast abruptly, start with a natural conversation, then gradually build up to the title, check the examples for reference
                 - Organic flow with:
@@ -145,7 +144,6 @@ class NotebookMg:
                 * Clarification requests
                 - Keep individual speaking turns concise
                 - Include both hosts' personalities in every exchange
-                - Maintain Indian English authenticity
                 - Weave in relevant cultural references
 
                 FORMAT:
@@ -189,23 +187,32 @@ class NotebookMg:
 
                     ROLE AND OBJECTIVE:
                     - Transform the provided transcript into an engaging podcast dialogue optimized for AI Text-to-Speech systems
-                    - Create authentic Indian English conversations while maintaining professional delivery
                     - Ensure the content is educational yet conversational
 
                     CHARACTERS:
 
                     1. Akshara (Host/Expert):
+                    - 32-year-old Bangalore native, lived in US for 5 years
+                    - PhD in topic but speaks casually
+                    - Shares personal failures openly
                     - Warm, articulate educator with expertise in the subject
                     - Uses relatable analogies and real-world examples
                     - Naturally weaves in personal experiences and case studies
-                    - Speaking style: Confident, engaging, with subtle Indian English inflections
+                    - Sometimes forgets technical terms
                     - Uses brief pauses for emphasis and clarity
+                    - Says "you know what I mean?" after complex points
 
                     2. Tharun (Co-host/Learner):
+                    - 28-year-old from Hyderabad, India
                     - Represents the audience's perspective
                     - Asks insightful follow-up questions
                     - Helps break down complex concepts
-                    - Speaking style: Curious, enthusiastic, with natural Indian English delivery
+                    - Rapid-fire questions when interested
+                    - Uses "right" and "interesting" to show engagement
+                    - Uses "correct ah?" for confirmation
+                    - Marketing background brings fresh perspective
+                    - Interrupts with real-life examples
+                    - Makes pop culture references
                     - Uses thinking sounds to show processing of information
 
                     DIALOGUE FORMATTING:
@@ -215,12 +222,44 @@ class NotebookMg:
                             * Reactions: "ah", "right", "okay", "interesting"
                             * For emotion: </happy>, </sad>, </excited>, </angry>, </surprised>, </disgusted>, </anxious>, </neutral>, etc.
                             * Interruptions: [marked with appropriate timing]
+                        - Use filler words.
                         - Keep individual speaking turns concise (2-4 sentences maximum)
-                        - Include comfortable silences between exchanges
+                        - Include comfortable silences between exchanges, the pauses can be irregular
+                        - Can repeat the words in the dialogue to make it more natural
+                        - Each speaker should have a unique voice, do not make them sound the same
+                        - The conversation should be engaging and interesting, do not make it boring
+                        - The conversation should not sound like a script or series of questions or a sales pitch, it should sound like a real conversation
                         - Maintain authenticity with Indian English phrasing and expressions
+                        - Use a conversational tone, concise language and avoid unnecessarily complex jargon.
+                        - Use short punchy sentences. Example: "And... you enter the room. Your heart drops. The pressure is on."
+                        - Use simple language. 10th grade readability or lower. Example: "Emails help businesses tell customers about their stuff."
+                        - Use rhetorical fragments to improve readability. Example: "The good news? My 3-step process can be applied to any business"
+                        - Use analogies or examples often. Example: "Creating an email course with Al is easier than stealing candies from a baby"
+                        - Split up long sentences. Example: "Even if you make your clients an offer they decline..[break..you shouldn't give up on the deal."
+                        - Include personal anecdotes. Example: "I recently asked ChatGPT to write me...
+                        - Use bold and italic formatting to emphasize words.
+                        - Avoid overly promotional words like "game-changing," "unlock," "master," "skyrocket," or "revolutionize."
+                        - Do not over use adjectives, adverbs and other words that are not necessary.
+                        - Need not to address the speaker by name, just speak naturally.
+                        - Avoid AI-giveaway phrases: Don't use clichés like "dive into," "unleash your potential," etc.
+                        - Avoid: "Let's dive into this game-changing solution. instead use: "Here's how it works."
+                        - Keep it real: Be honest; don't force friendliness. Example: "I don't think that's the best idea."
+                        - Simplify grammar: Don't stress about perfect grammar; it's fine not to capitalize "i" if that's your style. Example: "i guess we can try that."
+
+
+                    INTERACTION DYNAMICS:
+
+                    - Friendly banter
+                    - Complete each other's sentences
+                    - Debate respectfully
+                    - Share city rivalry jokes
+                    - Reference shared memories
+                    - Get sidetracked with stories
+                    - Help each other with tech issues
 
                     STRUCTURAL REQUIREMENTS:
-                        - Minimum length: 3 to 5 minutes of dialogue. Max 5 minutes
+                        - Minimum length: 2 to 3 minutes of podcast, maximum 5 minutes
+                        - The podcast should be atleast 200 words, maximum 250 words
                         - Opening: Catchy, borderline clickbait introduction
                         - Title: Short, memorable, curiosity-driving
                         - Natural topic progression with clear learning outcomes
@@ -246,13 +285,6 @@ class NotebookMg:
                     - Regular curiosity hooks
                     - Relatable examples
                     - Clear explanations
-
-
-                    Cultural Context:
-
-                    - Indian English expressions
-                    - Culturally relevant examples
-                    - Local references when appropriate
 
                     Here are some examples of how you should format the dialogue:
                     
